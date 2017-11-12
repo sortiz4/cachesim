@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <iostream>
 #include <string>
 #include "chars.hh"
 #include "exceptions.hh"
@@ -12,6 +14,7 @@ Memory::Memory() {
 }
 
 void Memory::conf(String &path) {
+    // Load the configuration
     auto file = FileReader(path);
     if(file) {
         String key, value;
@@ -29,7 +32,7 @@ void Memory::conf(String &path) {
                         unit.set(key, value);
                     } catch(FormatException &e) {
                         auto sb = StringBuilder();
-                        sb << e.what() <<" in '" << path << "'";
+                        sb << e.what() << " in '" << path << "'";
                         throw FormatException(sb.str());
                     }
                     key.clear();
@@ -55,6 +58,8 @@ void Memory::conf(String &path) {
         sb << "'" << path << "' could not be opened";
         throw IoException(sb.str());
     }
+    // Sort the hierarchy
+    sort(this->hierarchy.begin(), this->hierarchy.end());
 }
 
 void Memory::access(String &path) {
@@ -104,10 +109,11 @@ void Memory::exec(String &instr, String &addr) {
     }
 }
 
-void Memory::load(u32) {
+void Memory::load(u32 addr) {
     // Load instruction
+    this->hierarchy[0].load(addr);
 }
 
-void Memory::store(u32) {
+void Memory::store(u32 addr) {
     // Store instruction
 }
