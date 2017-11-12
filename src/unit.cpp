@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include "block.hh"
 #include "chars.hh"
 #include "consts.hh"
 #include "exceptions.hh"
@@ -13,136 +14,163 @@ using namespace std;
 Unit::Unit() {
     // Configuration properties
     this->level = 0;
-    this->write_policy = 0;
-    this->alloc_policy = 0;
-    this->line_count = 0;
-    this->line_size = 0;
+    this->write_hit_policy = 0;
+    this->write_miss_policy = 0;
+    this->block_size = 0;
+    this->set_count = 0;
     this->way = 0;
-    this->size = 0;
     this->hit_time = 0;
+    this->size = 0;
     // Access properties
     this->hits = 0;
     this->misses = 0;
-    this->time = 0;
     // Cache types
-    this->dmap = HashMap<u32, u32>();
-    this->nmap = HashMap<u32, Deque<u32>>();
-    this->mmap = Deque<u32>();
-}
-
-bool Unit::is_valid() {
-    if(this->level > 0) {
-        return true;
-    }
-    return false;
+    this->mmap = Deque<Block>();
+    this->dmap = HashMap<u32, Block>();
+    this->nmap = HashMap<u32, Deque<Block>>();
 }
 
 bool Unit::load(u32 addr) {
+    bool hit = access(false, addr);
+    if(hit) {
+        this->hits += 1;
+        cerr << "load: level: " << (u16)this->get_level() << ", hit: " << addr << endl;
+    } else {
+        this->misses += 1;
+        cerr << "load: level: " << (u16)this->get_level() << ", miss: " << addr << endl;
+    }
+    return hit;
+}
+
+bool Unit::store(u32 addr) {
+    // TODO: Implement store
+    // need three states
+        // hit - cache read/write hit, no dirty state
+        // miss - cache read/write miss, no dirty state
+        // dirty - cache dirty state - trigger additional store
+    // if writing
+        // Need to check dirty bit on hit and eviction
+        // On write hit
+            // write back - set dirty bit and continue
+            // write through - write to lower cache level - continue (as if loading)
+        // On write miss
+            // write alloc on - value will be written to cache level - continue (as if loading)
+            // write allocate off - value will not be written to cache level - do nothing
+    return false;
+}
+
+bool Unit::access(bool store, u32 addr) {
+    // Main memory always hits
+    if(this->level == consts::MAIN) {
+        return true;
+    }
+
     // Compute bit widths
-    u32 setw = (u32)log2(this->line_count);
-    u32 offsw = (u32)log2(this->line_size);
+    u32 setw = log2(this->set_count);
+    u32 offsw = log2(this->block_size);
     // Compute bit masks
     u32 tagm = 0xffffffff << (offsw + setw);
     u32 setm = ~tagm & (0xffffffff << offsw);
     // Break apart address
     u32 tag = tagm & addr;
     u32 set = setm & addr;
-    // Access cache
-    bool hit = access(tag, set);
-    // Score keeping
-    if(hit) {
-        this->hits += 1;
-    } else {
-        this->misses += 1;
+
+    // Access the appropriate cache
+    if(this->way == 1) {
+        return this->access_dmap(store, tag, set);
+    } else if(this->way != this->set_count) {
+        return this->access_mmap(store, tag, set);
     }
-    this->time += this->hit_time;
-    return hit;
+    return this->access_nmap(store, tag, set);
 }
 
-bool Unit::access(u32 tag, u32 set) {
-    if(this->level == consts::LEVEL_MAIN) {
-        // Main memory always hits
-        return true;
-    } else if(this->way == 0) {
-        // Direct-mapped cache
-        return this->access_dmap(tag, set);
-    } else if(this->way == this->line_count) {
-        // Fully associative cache (LRU)
-        return this->access_mmap(tag, set);
-    }
-    // N-way associative cache (LRU)
-    return this->access_nmap(tag, set);
-}
-
-bool Unit::access_dmap(u32 tag, u32 set) {
-    // Direct-mapped cache
-    if(this->dmap.find(set) == this->dmap.end()) {
-        // The line is invalid (compulsory miss)
-        this->dmap[set] = tag;
+bool Unit::access_mmap(bool store, u32 tag, u32 set) {
+    // Fully associative cache algorithm (LRU)
+    auto index = find(this->mmap.begin(), this->mmap.end(), tag);
+    if(index == this->mmap.end()) {
+        // The tag could not be found (miss)
+        if(this->mmap.size() == this->set_count) {
+            // The cache doesn't have room
+            this->mmap.pop_back();
+        }
+        this->mmap.push_front(Block(tag));
         return false;
     }
-    // The line is valid
+    // The tag was found (hit - move to front)
+    auto value = *index;
+    this->mmap.erase(index);
+    this->mmap.push_front(value);
+    return true;
+}
+
+bool Unit::access_dmap(bool store, u32 tag, u32 set) {
+    // Direct mapped cache algorithm
+    if(this->dmap.find(set) == this->dmap.end()) {
+        // The line is invalid (compulsory miss)
+        this->dmap[set] = Block(tag);
+        return false;
+    }
+    // The line is valid and the tag matches (hit)
     if(this->dmap[set] == tag) {
-        // Cache hit
         return true;
     }
-    // Cache miss
-    this->dmap[set] = tag;
+    // The line is valid but the tag does not match (miss)
+    this->dmap[set] = Block(tag);
     return false;
 }
 
-bool Unit::access_nmap(u32 tag, u32 set) {
-    // N-way associative cache (LRU)
-    auto itera = this->nmap.find(set);
-    if(itera == this->nmap.end()) {
+bool Unit::access_nmap(bool store, u32 tag, u32 set) {
+    // Set associative cache algorithm (LRU)
+    auto set_index = this->nmap.find(set);
+    if(set_index == this->nmap.end()) {
         // The line is invalid (compulsory miss)
-        auto deque = Deque<u32>(this->way);
-        deque.push_front(tag);
+        auto deque = Deque<Block>(this->way);
+        deque.push_front(Block(tag));
         this->nmap[set] = deque;
         return false;
     }
     // The line is valid
-    auto deque = itera->second;
-    auto iterb = find(deque.begin(), deque.end(), tag);
-    if(iterb == deque.end()) {
+    auto deque = set_index->second;
+    auto block_index = find(deque.begin(), deque.end(), tag);
+    if(block_index == deque.end()) {
         // The tag could not be found (miss)
-        if(deque.size() < this->way) {
-            // The set has room
-            deque.push_front(tag);
-        } else {
+        if(deque.size() == this->way) {
             // The set doesn't have room
             deque.pop_back();
-            deque.push_front(tag);
         }
+        deque.push_front(Block(tag));
         return false;
     }
-    // The tag was found (move to front)
-    auto value = *iterb;
-    deque.erase(iterb);
+    // The tag was found (hit - move to front)
+    auto value = *block_index;
+    deque.erase(block_index);
     deque.push_front(value);
     return true;
 }
 
-bool Unit::access_mmap(u32 tag, u32 set) {
-    // Fully associative cache (LRU)
-    auto iter = find(this->mmap.begin(), this->mmap.end(), tag);
-    if(iter == this->mmap.end()) {
-        // The tag could not be found (miss)
-        if(this->mmap.size() < this->line_count) {
-            // The cache has room
-            this->mmap.push_front(tag);
-        } else {
-            // The cache doesn't have room
-            this->mmap.pop_back();
-            this->mmap.push_front(tag);
-        }
-        return false;
+bool Unit::is_valid() {
+    if(this->level == consts::MAIN) {
+        return true;
     }
-    // The tag was found (move to front)
-    auto value = *iter;
-    this->mmap.erase(iter);
-    this->mmap.push_front(value);
-    return true;
+    return this->level > 0
+        && this->write_hit_policy > 0
+        && this->write_miss_policy > 0
+        && this->block_size > 0
+        && this->set_count > 0
+        && this->way > 0
+        && this->size > 0;
+}
+
+u8 Unit::get_level() {
+    return this->level;
+}
+
+u8 Unit::get_write_hit_policy() {
+    return this->write_hit_policy;
+}
+
+u8 Unit::get_write_miss_policy() {
+    return this->write_miss_policy;
 }
 
 void Unit::set(String &key, String &value) {
@@ -150,31 +178,31 @@ void Unit::set(String &key, String &value) {
         // Evaluate the level
         this->set_level(value);
     } else if(key.compare(text::LINE) == 0) {
-        // Evaluate the line size
-        this->set_line_size(value);
+        // Evaluate the block size
+        this->set_block_size(value);
     } else if(key.compare(text::WAY) == 0) {
-        // Evaluate the way
+        // Evaluate the associativity
         this->set_way(value);
     } else if(key.compare(text::SIZE) == 0) {
-        // Evaluate the size
+        // Evaluate the cache size
         this->set_size(value);
     } else if(key.compare(text::HIT_TIME) == 0) {
         // Evaluate the hit time
         this->set_hit_time(value);
     } else if(key.compare(text::WRITE_POLICY) == 0) {
-        // Evaluate the write policy
-        this->set_write_policy(value);
+        // Evaluate the write hit policy
+        this->set_write_hit_policy(value);
     } else if(key.compare(text::ALLOC_POLICY) == 0) {
-        // Evaluate the allocation policy
-        this->set_alloc_policy(value);
+        // Evaluate the write miss policy
+        this->set_write_miss_policy(value);
     } else {
         throw FormatException("unrecognized key");
     }
 }
 
 void Unit::set_level(String &value) {
-    if(value.compare(text::LEVEL_MAIN) == 0) {
-        this->level = consts::LEVEL_MAIN;
+    if(value.compare(text::MAIN) == 0) {
+        this->level = consts::MAIN;
     } else {
         try {
             this->level = stoul(value.substr(1, value.length()));
@@ -184,27 +212,60 @@ void Unit::set_level(String &value) {
     }
 }
 
-void Unit::set_line_size(String &value) {
+void Unit::set_write_hit_policy(String &value) {
+    if(value.compare(text::WRITE_BACK) == 0) {
+        this->write_hit_policy = consts::WRITE_BACK;
+    } else if(value.compare(text::WRITE_THROUGH) == 0) {
+        this->write_hit_policy = consts::WRITE_THROUGH;
+    } else {
+        throw FormatException("unrecognized write policy");
+    }
+}
+
+void Unit::set_write_miss_policy(String &value) {
+    if(value.compare(text::WRITE_ALLOCATE_ON) == 0) {
+        this->write_miss_policy = consts::WRITE_ALLOCATE_ON;
+    } else if(value.compare(text::WRITE_ALLOCATE_OFF) == 0) {
+        this->write_miss_policy = consts::WRITE_ALLOCATE_OFF;
+    } else {
+        throw FormatException("unrecognized allocation policy");
+    }
+}
+
+void Unit::set_block_size(String &value) {
     try {
-        this->line_size = (u16)stoul(value);
-        if(this->line_size != 0) {
-            this->line_count = this->size / this->line_size;
-        }
+        this->block_size = (u16)stoul(value);
+        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'line' could not be parsed");        
+    }
+}
+
+void Unit::set_set_count() {
+    if(this->block_size != 0 && this->way != 0) {
+        this->set_count = this->size / this->block_size / this->way;
     }
 }
 
 void Unit::set_way(String &value) {
     try {
         this->way = (u16)stoul(value);
+        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'way' could not be parsed");        
     }
 }
 
+void Unit::set_hit_time(String &value) {
+    try {
+        this->hit_time = (u32)stoul(value);
+    } catch(Exception &e) {
+        throw FormatException("'hit time' could not be parsed");        
+    }
+}
+
 void Unit::set_size(String &value) {
-    u32 multipliers[] = {1, (u32)1e3, (u32)1e6, (u32)1e9};
+    u32 multipliers[] = {1, 1024, 1024*1024, 1024*1024*1024};
     auto suffix = value[value.length() - 1];
     auto multiplier = multipliers[0];
     // Check the size multiplier (only supports 'K', 'M', 'G')
@@ -220,45 +281,12 @@ void Unit::set_size(String &value) {
     }
     try {
         this->size = (u32)stoul(value) * multiplier;
-        if(this->line_size != 0) {
-            this->line_count = this->size / this->line_size;
-        }
+        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'size' could not be parsed");        
     }
 }
 
-void Unit::set_hit_time(String &value) {
-    try {
-        this->hit_time = (u32)stoul(value);
-    } catch(Exception &e) {
-        throw FormatException("'hit time' could not be parsed");        
-    }
-}
-
-void Unit::set_write_policy(String &value) {
-    if(value.compare(text::WRITE_BACK) == 0) {
-        this->write_policy = consts::WRITE_BACK;
-    } else if(value.compare(text::WRITE_THROUGH) == 0) {
-        this->write_policy = consts::WRITE_THROUGH;
-    } else {
-        throw FormatException("unrecognized write policy");
-    }
-}
-
-void Unit::set_alloc_policy(String &value) {
-    if(value.compare(text::WRITE_ALLOCATE_ON) == 0) {
-        this->alloc_policy = consts::WRITE_ALLOCATE_ON;
-    } else if(value.compare(text::WRITE_ALLOCATE_OFF) == 0) {
-        this->alloc_policy = consts::WRITE_ALLOCATE_OFF;
-    } else {
-        throw FormatException("unrecognized allocation policy");
-    }
-}
-
 bool Unit::operator<(Unit &rhs) {
-    if(this->level < rhs.level) {
-        return true;
-    }
-    return false;
+    return this->level < rhs.level;
 }

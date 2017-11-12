@@ -12,7 +12,7 @@ namespace text {
     const String ALLOC_POLICY = "ALLOCATIONPOLICY";
 
     // Known configuration values
-    const String LEVEL_MAIN = "MAIN";
+    const String MAIN = "MAIN";
     const String WRITE_BACK = "WRITEBACK";
     const String WRITE_THROUGH = "WRITETHROUGH";
     const String WRITE_ALLOCATE_ON = "WRITEALLOCATE";

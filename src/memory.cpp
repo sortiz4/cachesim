@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include "chars.hh"
+#include "consts.hh"
 #include "exceptions.hh"
 #include "memory.hh"
 #include "text.hh"
@@ -91,11 +92,11 @@ void Memory::access(String &path) {
     }
 }
 
-void Memory::exec(String &instr, String &addr) {
+void Memory::exec(String &instr, String &saddr) {
     u32 uaddr = 0;
     // Parse the address
     try {
-        uaddr = (u32)stoul(addr);
+        uaddr = (u32)stoul(saddr);
     } catch(Exception &e) {
         throw FormatException("'address' could not be parsed");        
     }
@@ -111,9 +112,19 @@ void Memory::exec(String &instr, String &addr) {
 
 void Memory::load(u32 addr) {
     // Load instruction
-    this->hierarchy[0].load(addr);
+    for(Unit &unit: this->hierarchy) {
+        // TODO: Increment access time
+        if(unit.load(addr)) {
+            break;
+        }
+    }
 }
 
 void Memory::store(u32 addr) {
     // Store instruction
+    for(Unit &unit: this->hierarchy) {
+        // TODO: Increment access time & set dirty bit (affects reads)
+        // Check write hit policy (break out of loop if write back - set dirty bit)
+        // Check write miss policy (don't load the value into the cache if it's)
+    }
 }
