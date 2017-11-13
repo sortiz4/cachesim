@@ -43,8 +43,11 @@ class Unit {
         u8 get_level();
         u8 get_write_hit_policy();
         u8 get_write_miss_policy();
+        f32 get_miss_rate();
+        u32 get_hit_time();
         u32 get_hits();
         u32 get_misses();
+        u32 get_access_total();
         void set(String&, String&);
         bool operator<(Unit&);
 };

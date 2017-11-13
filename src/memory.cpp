@@ -105,12 +105,20 @@ void Memory::score() {
         }
         cout << "Hits: " << unit.get_hits() << endl;
         cout << "Misses: " << unit.get_misses() << endl;
-        cout << "Total: " << unit.get_hits() + unit.get_misses() << endl;
-        cout << "AccessTime: " << "???" << endl;
+        cout << "Total: " << unit.get_access_total() << endl;
+        cout << "AccessTime: " << (f32)unit.get_access_total() * this->time(i) << endl;
         if(i < length - 1) {
             cout << endl;
         }
     }
+}
+
+f32 Memory::time(u32 from) {
+    auto &unit = this->hierarchy[from];
+    if(from == this->hierarchy.size() - 1 || unit.get_level() == consts::MAIN) {
+        return unit.get_hit_time();
+    }
+    return (f32)unit.get_hit_time() + unit.get_miss_rate() * this->time(from + 1);
 }
 
 void Memory::exec(String &instr, String &saddr) {

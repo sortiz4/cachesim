@@ -44,7 +44,7 @@ Result Unit::load(u32 addr) {
         this->misses += 1;
         // cerr << "load: level: " << (u16)this->level << ", miss: " << addr << endl;
     } else if(result.get_status() == consts::DIRTY) {
-        this->misses += 1;
+        // this->misses += 1;
         // cerr << "load: level: " << (u16)this->level << ", dirty: " << addr << endl;
     }
     return result;
@@ -66,7 +66,7 @@ Result Unit::store(u32 addr) {
         this->misses += 1;
         // cerr << "store: level: " << (u16)this->level << ", miss: " << addr << endl;
     } else if(result.get_status() == consts::DIRTY) {
-        this->misses += 1;
+        // this->misses += 1;
         // cerr << "store: level: " << (u16)this->level << ", dirty: " << addr << endl;
     }
     return result;
@@ -247,12 +247,24 @@ u8 Unit::get_write_miss_policy() {
     return this->write_miss_policy;
 }
 
+f32 Unit::get_miss_rate() {
+    return (f32)this->get_misses() / (f32)this->get_access_total();
+}
+
+u32 Unit::get_hit_time() {
+    return this->hit_time;
+}
+
 u32 Unit::get_hits() {
     return this->hits;
 }
 
 u32 Unit::get_misses() {
     return this->misses;
+}
+
+u32 Unit::get_access_total() {
+    return this->hits + this->misses;
 }
 
 void Unit::set(String &key, String &value) {
