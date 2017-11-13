@@ -10,7 +10,7 @@ namespace chars {
     const char UPPER_G = 0x47;
     const char UPPER_K = 0x4B;
     const char UPPER_M = 0x4D;
-    const char UPPER_Z = 0x5A;    
+    const char UPPER_Z = 0x5A;
     const char LOWER_A = 0x61;
     const char LOWER_Z = 0x7A;
     bool is_alphanum(char);

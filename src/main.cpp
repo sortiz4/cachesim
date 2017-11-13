@@ -28,5 +28,6 @@ int main(int argc, char *argv[]) {
         cerr << e.what() << endl;
         return status::ACCESS;
     }
+    memory.score();
     return status::OKAY;
 }

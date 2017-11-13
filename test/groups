@@ -1,0 +1,35 @@
+#!/usr/bin/env python
+import random
+import sys
+
+VARIANCE = 2**8
+GROUPSZ = 2**5
+COUNT = 2**5
+RANGE = 2**32
+INSTR = ['ld', 'st']
+
+
+def clamp(n, lower, upper):
+    if n < lower:
+        return lower
+    if n > upper:
+        return upper
+    return n
+
+
+if __name__ == '__main__':
+    """
+    This script generates an access file containing tightly
+    grouped clusters of addresses (simulates spatial locality).
+    """
+    with open(sys.argv[1], 'w') as file:
+        for _ in range(COUNT):
+            center = random.randint(0, RANGE)
+            lower = clamp(center - VARIANCE // 2, 0, RANGE)
+            upper = clamp(center + VARIANCE // 2, 0, RANGE)
+            for _ in range(GROUPSZ):
+                buffer = '{} {}\n'.format(
+                    random.choice(INSTR),
+                    random.randint(lower, upper)
+                )
+                file.write(buffer)

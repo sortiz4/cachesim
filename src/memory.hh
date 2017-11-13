@@ -6,10 +6,11 @@ class Memory {
     private:
         Vector<Unit> hierarchy;
         void exec(String&, String&);
-        void load(u32);
-        void store(u32);
+        void load(u32, u32);
+        void store(u32, u32);
     public:
         Memory();
         void conf(String&);
         void access(String&);
+        void score();
 };

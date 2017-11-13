@@ -2,11 +2,13 @@
 #include "types.hh"
 
 Block::Block() {
-    this->tag = 0;
-    this->dirty = false;
+    this->address = 0xffffffff;
+    this->tag = 0xffffffff;
+    this->dirty = true;
 }
 
-Block::Block(u32 tag) {
+Block::Block(u32 address, u32 tag) {
+    this->address = address;
     this->tag = tag;
     this->dirty = false;
 }
@@ -15,16 +17,16 @@ u32 Block::get_tag() const {
     return this->tag;
 }
 
-void Block::set_tag(u32 tag) {
-    this->tag = tag;
+u32 Block::get_address() const {
+    return this->address;
 }
 
 bool Block::get_dirty() const {
     return this->dirty;
 }
 
-void Block::set_dirty() {
-    this->dirty = true;
+void Block::set_dirty(bool dirty) {
+    this->dirty = dirty;
 }
 
 bool Block::operator==(const u32 &rhs) {

@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+import random
+import sys
+
+COUNT = 2**10
+RANGE = 2**32
+INSTR = ['ld', 'st']
+
+if __name__ == '__main__':
+    """
+    This script generates an access file
+    containing completely random addresses.
+    """
+    with open(sys.argv[1], 'w') as file:
+        for _ in range(COUNT):
+            buffer = '{} {}\n'.format(
+                random.choice(INSTR),
+                random.randint(0, RANGE)
+            )
+            file.write(buffer)
