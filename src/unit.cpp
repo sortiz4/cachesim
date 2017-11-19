@@ -23,50 +23,103 @@ Unit::Unit() {
     this->hit_time = 0;
     this->size = 0;
     // Access properties
-    this->hits = 0;
-    this->misses = 0;
+    this->access_time = 0;
+    this->hit_count = 0;
+    this->miss_count = 0;
+    this->next = NULL;
     // Cache types
     this->mmap = Deque<Block>();
     this->dmap = HashMap<u32, Block>();
     this->nmap = HashMap<u32, Deque<Block>>();
 }
 
+Unit::~Unit() {
+    if(this->next != NULL) {
+        delete this->next;
+    }
+}
+
+void Unit::score() {
+    if(this->level == consts::MAIN) {
+        cout << "Level: " << "Main" << endl;
+    } else {
+        cout << "Level: " << (u16)this->level << endl;
+    }
+    cout << "HitCount: " << this->hit_count << endl
+         << "MissCount: " << this->miss_count << endl
+         << "AccessCount: " << this->hit_count + this->miss_count << endl
+         << "AccessTime: " << this->access_time << endl;
+    if(this->next != NULL) {
+        cout << endl;
+        this->next->score();
+    }
+}
+
 Result Unit::load(u32 addr) {
-    // NOTE: Load events are handled by the controller. A load hit will stop
-    // immediately. A load miss will continue until the block is found. A dirty
-    // event occurs when a dirty block is being evicted - this will trigger a
-    // store of that block to the next level.
-    auto result = access(false, addr);
+    auto result = this->access(false, addr);
+    this->access_time += this->hit_time;
+    result.add_time(this->hit_time);
     if(result.get_status() == consts::HIT) {
-        this->hits += 1;
+        // Load hit stops immediately
         // cerr << "load: level: " << (u16)this->level << ", hit: " << addr << endl;
+        this->hit_count += 1;
     } else if(result.get_status() == consts::MISS) {
-        this->misses += 1;
+        // Load miss descends to the next level
         // cerr << "load: level: " << (u16)this->level << ", miss: " << addr << endl;
+        this->miss_count += 1;
+        auto time = this->next->load(addr).get_time();
+        this->access_time += time;
+        result.add_time(time);
     } else if(result.get_status() == consts::DIRTY) {
-        // this->misses += 1;
+        // Dirty loads will trigger a store and retry
         // cerr << "load: level: " << (u16)this->level << ", dirty: " << addr << endl;
+        auto time = this->next->store(result.get_address()).get_time();
+        this->access_time += time;
+        result.add_time(time);
+        // Retry (assume hit)
+        this->access(false, addr);
+        this->access_time += this->hit_time;
+        result.add_time(this->hit_time);
     }
     return result;
 }
 
 Result Unit::store(u32 addr) {
-    // NOTE: Write miss events are handled by the controller. With write
-    // allocate, a load is triggered followed by a write hit. Without write
-    // allocate, nothing is written to the cache.
-    //
-    // NOTE: Write hit events are split into two categories. Write back behaves
-    // like a load hit but a dirty bit is set. Write through behaves like a
-    // load hit.
-    auto result = access(true, addr);
+    auto result = this->access(true, addr);
+    this->access_time += this->hit_time;
+    result.add_time(this->hit_time);
     if(result.get_status() == consts::HIT) {
-        this->hits += 1;
+        // Write hit behavior depends on the policy
         // cerr << "store: level: " << (u16)this->level << ", hit: " << addr << endl;
+        this->hit_count += 1;
+        if(this->write_hit_policy == consts::WRITE_THROUGH) {
+            // Write through descends to the next level
+            auto time = this->next->store(addr).get_time();
+            this->access_time += time;
+            result.add_time(time);
+        }
+        // Write back stops immediately
     } else if(result.get_status() == consts::MISS) {
-        this->misses += 1;
+        // Write miss behavior depends on the policy
         // cerr << "store: level: " << (u16)this->level << ", miss: " << addr << endl;
+        this->miss_count += 1;
+        if(this->write_miss_policy == consts::WRITE_ALLOCATE_ON) {
+            // Write allocation will load the block and retry
+            // No need to accumulate time on the same level
+            auto time = this->load(addr).get_time();
+            result.add_time(time);
+            // Retry (assume hit)
+            this->access(true, addr);
+            this->access_time += this->hit_time;
+            result.add_time(this->hit_time);
+        } else {
+            // No write allocation descends to the next level
+            auto time = this->next->store(addr).get_time();
+            this->access_time += time;
+            result.add_time(time);
+        }
     } else if(result.get_status() == consts::DIRTY) {
-        // this->misses += 1;
+        // Dirty writes have no meaning
         // cerr << "store: level: " << (u16)this->level << ", dirty: " << addr << endl;
     }
     return result;
@@ -85,8 +138,8 @@ Result Unit::access(bool store, u32 addr) {
     u32 tagm = 0xffffffff << (offsw + setw);
     u32 setm = ~tagm & (0xffffffff << offsw);
     // Break apart address
-    u32 tag = tagm & addr;
-    u32 set = setm & addr;
+    u32 tag = (tagm & addr) >> (offsw + setw);
+    u32 set = (setm & addr) >> offsw;
 
     // Access the appropriate cache
     if(this->way == 1) {
@@ -231,40 +284,23 @@ bool Unit::is_valid() {
         && this->write_miss_policy > 0
         && this->block_size > 0
         && this->way > 0
-        && this->set_count > 0
+        // && this->set_count > 0
         && this->size > 0;
 }
 
-u8 Unit::get_level() {
-    return this->level;
+void Unit::finalize() {
+    // Update the set count if the information is available
+    if(this->set_count == 0 && this->way > 0 && this->size > 0 && this->block_size > 0) {
+        this->set_count = this->size / (u32)this->block_size / (u32)this->way;
+    }
 }
 
-u8 Unit::get_write_hit_policy() {
-    return this->write_hit_policy;
-}
-
-u8 Unit::get_write_miss_policy() {
-    return this->write_miss_policy;
-}
-
-f32 Unit::get_miss_rate() {
-    return (f32)this->get_misses() / (f32)this->get_access_total();
-}
-
-u32 Unit::get_hit_time() {
-    return this->hit_time;
-}
-
-u32 Unit::get_hits() {
-    return this->hits;
-}
-
-u32 Unit::get_misses() {
-    return this->misses;
-}
-
-u32 Unit::get_access_total() {
-    return this->hits + this->misses;
+void Unit::add_unit(Unit *unit) {
+    if(this->next == NULL) {
+        this->next = unit;
+    } else {
+        this->next->add_unit(unit);
+    }
 }
 
 void Unit::set(String &key, String &value) {
@@ -329,7 +365,6 @@ void Unit::set_write_miss_policy(String &value) {
 void Unit::set_block_size(String &value) {
     try {
         this->block_size = (u16)stoul(value);
-        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'line' could not be parsed");
     }
@@ -338,7 +373,6 @@ void Unit::set_block_size(String &value) {
 void Unit::set_way(String &value) {
     try {
         this->way = (u16)stoul(value);
-        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'way' could not be parsed");
     }
@@ -349,12 +383,6 @@ void Unit::set_hit_time(String &value) {
         this->hit_time = (u32)stoul(value);
     } catch(Exception &e) {
         throw FormatException("'hit time' could not be parsed");
-    }
-}
-
-void Unit::set_set_count() {
-    if(this->set_count == 0 && this->way > 0 && this->size > 0 && this->block_size > 0) {
-        this->set_count = this->size / (u32)this->block_size / (u32)this->way;
     }
 }
 
@@ -375,7 +403,6 @@ void Unit::set_size(String &value) {
     }
     try {
         this->size = (u32)stoul(value) * multiplier;
-        this->set_set_count();
     } catch(Exception &e) {
         throw FormatException("'size' could not be parsed");
     }

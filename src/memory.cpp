@@ -12,16 +12,23 @@
 using namespace std;
 
 Memory::Memory() {
-    this->hierarchy = Vector<Unit>();
+    this->unit = NULL;
+}
+
+Memory::~Memory() {
+    if(this->unit != NULL) {
+        delete this->unit;
+    }
 }
 
 void Memory::conf(String &path) {
     // Load the configuration
     auto file = FileReader(path);
+    auto vec = Vector<Unit*>();
     if(file) {
         String key, value;
         auto buffer = String();
-        auto unit = Unit();
+        auto *unit = new Unit();
         while(!file.eof()) {
             auto c = chars::normalize(file.get());
             if(c == chars::LF || file.eof()) {
@@ -31,7 +38,7 @@ void Memory::conf(String &path) {
                     buffer.clear();
                     // Evaluate the key-value pair
                     try {
-                        unit.set(key, value);
+                        unit->set(key, value);
                     } catch(FormatException &e) {
                         auto sb = StringBuilder();
                         sb << e.what() << " in '" << path << "'";
@@ -42,9 +49,9 @@ void Memory::conf(String &path) {
                 }
             } else if(c == chars::COLON) {
                 // The end of a key has been reached
-                if(buffer.compare(text::LEVEL) == 0 && unit.is_valid()) {
-                    this->hierarchy.push_back(unit);
-                    unit = Unit();
+                if(buffer.compare(text::LEVEL) == 0 && unit->is_valid()) {
+                    vec.push_back(unit);
+                    unit = new Unit();
                 }
                 key = buffer;
                 buffer.clear();
@@ -53,7 +60,7 @@ void Memory::conf(String &path) {
                 buffer.push_back(c);
             }
         }
-        this->hierarchy.push_back(unit);
+        vec.push_back(unit);
         file.close();
     } else {
         auto sb = StringBuilder();
@@ -62,7 +69,18 @@ void Memory::conf(String &path) {
     }
 
     // Sort the hierarchy
-    sort(this->hierarchy.begin(), this->hierarchy.end());
+    sort(vec.begin(), vec.end(), [](Unit *lhs, Unit *rhs) {
+        return *lhs < *rhs;
+    });
+    this->unit = vec[0];
+
+    // Finalize the hierarcy
+    for(Unit *unit: vec) {
+        unit->finalize();
+    }
+    for(auto i = 1; i < vec.size(); i++) {
+        this->unit->add_unit(vec[i]);
+    }
 }
 
 void Memory::access(String &path) {
@@ -94,33 +112,6 @@ void Memory::access(String &path) {
     }
 }
 
-void Memory::score() {
-    auto length = this->hierarchy.size();
-    for(auto i = 0; i < length; i++) {
-        auto &unit = this->hierarchy[i];
-        if(unit.get_level() == consts::MAIN) {
-            cout << "Level: " << "Main" << endl;
-        } else {
-            cout << "Level: " << (u32)unit.get_level() << endl;
-        }
-        cout << "Hits: " << unit.get_hits() << endl;
-        cout << "Misses: " << unit.get_misses() << endl;
-        cout << "Total: " << unit.get_access_total() << endl;
-        cout << "AccessTime: " << (f32)unit.get_access_total() * this->time(i) << endl;
-        if(i < length - 1) {
-            cout << endl;
-        }
-    }
-}
-
-f32 Memory::time(u32 from) {
-    auto &unit = this->hierarchy[from];
-    if(from == this->hierarchy.size() - 1 || unit.get_level() == consts::MAIN) {
-        return unit.get_hit_time();
-    }
-    return (f32)unit.get_hit_time() + unit.get_miss_rate() * this->time(from + 1);
-}
-
 void Memory::exec(String &instr, String &saddr) {
     u32 uaddr = 0;
 
@@ -133,46 +124,22 @@ void Memory::exec(String &instr, String &saddr) {
 
     // Parse the instruction
     if(instr.compare(text::LOAD) == 0) {
-        this->load(uaddr, 0);
+        this->load(uaddr);
     } else if(instr.compare(text::STORE) == 0) {
-        this->store(uaddr, 0);
+        this->store(uaddr);
     } else {
         throw FormatException("unrecognized instruction");
     }
 }
 
-void Memory::load(u32 addr, u32 from) {
-    // Load instruction
-    for(auto i = from; i < this->hierarchy.size(); i++) {
-        auto &unit = this->hierarchy[i];
-        auto result = unit.load(addr);
-        if(result.get_status() == consts::HIT) {
-            // Read hit stops immediately
-            break;
-        } else if(result.get_status() == consts::DIRTY) {
-            // Dirty blocks must be written through before eviction
-            this->store(result.get_address(), i + 1);
-            i -= 1;
-        }
-    }
+void Memory::score() {
+    this->unit->score();
 }
 
-void Memory::store(u32 addr, u32 from) {
-    // Store instruction
-    for(auto i = from; i < this->hierarchy.size(); i++) {
-        auto &unit = this->hierarchy[i];
-        auto result = unit.store(addr);
-        if(result.get_status() == consts::HIT) {
-            if(unit.get_write_hit_policy() == consts::WRITE_BACK) {
-                // Write back stops immediately
-                break;
-            }
-        } else if(result.get_status() == consts::MISS) {
-            if(unit.get_write_miss_policy() == consts::WRITE_ALLOCATE_ON) {
-                // Write allocation must load the block before continuing
-                this->load(addr, i);
-                i -= 1;
-            }
-        }
-    }
+void Memory::load(u32 addr) {
+    this->unit->load(addr);
+}
+
+void Memory::store(u32 addr) {
+    this->unit->store(addr);
 }

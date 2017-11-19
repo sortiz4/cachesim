@@ -15,8 +15,10 @@ class Unit {
         u32 set_count;
         u32 size;
         // Access properties
-        u32 hits;
-        u32 misses;
+        u32 access_time;
+        u32 hit_count;
+        u32 miss_count;
+        Unit *next;
         // Cache types
         Deque<Block> mmap;
         HashMap<u32, Block> dmap;
@@ -33,21 +35,16 @@ class Unit {
         void set_block_size(String&);
         void set_way(String&);
         void set_hit_time(String&);
-        void set_set_count();
         void set_size(String&);
     public:
         Unit();
+        ~Unit();
         Result load(u32);
         Result store(u32);
         bool is_valid();
-        u8 get_level();
-        u8 get_write_hit_policy();
-        u8 get_write_miss_policy();
-        f32 get_miss_rate();
-        u32 get_hit_time();
-        u32 get_hits();
-        u32 get_misses();
-        u32 get_access_total();
+        void score();
+        void finalize();
+        void add_unit(Unit*);
         void set(String&, String&);
         bool operator<(Unit&);
 };
