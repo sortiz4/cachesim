@@ -14,6 +14,7 @@ class Unit {
         u32 hit_time;
         u32 set_count;
         u32 size;
+        bool full;
         // Access properties
         u32 access_time;
         u32 hit_count;

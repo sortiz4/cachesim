@@ -34,5 +34,5 @@ bool Block::operator==(const u32 &rhs) {
 }
 
 bool Block::operator==(const Block &rhs) {
-    return this->tag == rhs.get_tag();
+    return this->address == rhs.get_address();
 }

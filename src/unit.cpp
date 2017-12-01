@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <string>
 #include "block.hh"
 #include "chars.hh"
 #include "consts.hh"
@@ -22,6 +21,7 @@ Unit::Unit() {
     this->set_count = 0;
     this->hit_time = 0;
     this->size = 0;
+    this->full = false;
     // Access properties
     this->access_time = 0;
     this->hit_count = 0;
@@ -61,25 +61,23 @@ Result Unit::load(u32 addr) {
     result.add_time(this->hit_time);
     if(result.get_status() == consts::HIT) {
         // Load hit stops immediately
-        // cerr << "load: level: " << (u16)this->level << ", hit: " << addr << endl;
         this->hit_count += 1;
     } else if(result.get_status() == consts::MISS) {
         // Load miss descends to the next level
-        // cerr << "load: level: " << (u16)this->level << ", miss: " << addr << endl;
         this->miss_count += 1;
         auto time = this->next->load(addr).get_time();
         this->access_time += time;
         result.add_time(time);
     } else if(result.get_status() == consts::DIRTY) {
         // Dirty loads will trigger a store and retry
-        // cerr << "load: level: " << (u16)this->level << ", dirty: " << addr << endl;
+        // No need to accumulate time on the same level
         auto time = this->next->store(result.get_address()).get_time();
         this->access_time += time;
         result.add_time(time);
-        // Retry (assume hit)
-        this->access(false, addr);
-        this->access_time += this->hit_time;
-        result.add_time(this->hit_time);
+        // Retry (will miss) -- subtract repeat
+        time = this->load(addr).get_time() - this->hit_time;
+        this->access_time -= this->hit_time;
+        result.add_time(time);
     }
     return result;
 }
@@ -90,7 +88,6 @@ Result Unit::store(u32 addr) {
     result.add_time(this->hit_time);
     if(result.get_status() == consts::HIT) {
         // Write hit behavior depends on the policy
-        // cerr << "store: level: " << (u16)this->level << ", hit: " << addr << endl;
         this->hit_count += 1;
         if(this->write_hit_policy == consts::WRITE_THROUGH) {
             // Write through descends to the next level
@@ -101,17 +98,19 @@ Result Unit::store(u32 addr) {
         // Write back stops immediately
     } else if(result.get_status() == consts::MISS) {
         // Write miss behavior depends on the policy
-        // cerr << "store: level: " << (u16)this->level << ", miss: " << addr << endl;
         this->miss_count += 1;
         if(this->write_miss_policy == consts::WRITE_ALLOCATE_ON) {
             // Write allocation will load the block and retry
             // No need to accumulate time on the same level
-            auto time = this->load(addr).get_time();
+            auto time = this->load(addr).get_time() - this->hit_time;
+            this->access_time -= this->hit_time;
             result.add_time(time);
-            // Retry (assume hit)
-            this->access(true, addr);
-            this->access_time += this->hit_time;
-            result.add_time(this->hit_time);
+            this->miss_count -= 1;
+            // Retry (will hit) -- subtract repeat
+            time = this->store(addr).get_time() - this->hit_time;
+            this->access_time -= this->hit_time;
+            result.add_time(time);
+            this->hit_count -= 1;
         } else {
             // No write allocation descends to the next level
             auto time = this->next->store(addr).get_time();
@@ -120,7 +119,6 @@ Result Unit::store(u32 addr) {
         }
     } else if(result.get_status() == consts::DIRTY) {
         // Dirty writes have no meaning
-        // cerr << "store: level: " << (u16)this->level << ", dirty: " << addr << endl;
     }
     return result;
 }
@@ -132,8 +130,8 @@ Result Unit::access(bool store, u32 addr) {
     }
 
     // Compute bit widths
-    u32 setw = log2(this->set_count);
-    u32 offsw = log2(this->block_size);
+    u32 setw = round(log2(this->set_count));
+    u32 offsw = round(log2(this->block_size));
     // Compute bit masks
     u32 tagm = 0xffffffff << (offsw + setw);
     u32 setm = ~tagm & (0xffffffff << offsw);
@@ -144,7 +142,7 @@ Result Unit::access(bool store, u32 addr) {
     // Access the appropriate cache
     if(this->way == 1) {
         return this->access_dmap(store, addr, tag, set);
-    } else if(this->way == this->set_count) {
+    } else if(this->set_count == 1) {
         return this->access_mmap(store, addr, tag, set);
     }
     return this->access_nmap(store, addr, tag, set);
@@ -156,7 +154,7 @@ Result Unit::access_mmap(bool store, u32 addr, u32 tag, u32 set) {
     if(index == this->mmap.end()) {
         // The tag could not be found (miss)
         if(!store) {
-            if(this->mmap.size() == this->set_count) {
+            if(this->mmap.size() == this->way) {
                 // The cache doesn't have room (eviction)
                 auto &block = this->mmap[this->mmap.size() - 1];
                 if(block.get_dirty()) {
@@ -283,12 +281,14 @@ bool Unit::is_valid() {
         && this->write_hit_policy > 0
         && this->write_miss_policy > 0
         && this->block_size > 0
-        && this->way > 0
-        // && this->set_count > 0
         && this->size > 0;
 }
 
 void Unit::finalize() {
+    // Compute the associativity if 'full'
+    if(this->full) {
+        this->way = (u16)(this->size / (u32)this->block_size);
+    }
     // Update the set count if the information is available
     if(this->set_count == 0 && this->way > 0 && this->size > 0 && this->block_size > 0) {
         this->set_count = this->size / (u32)this->block_size / (u32)this->way;
@@ -371,10 +371,14 @@ void Unit::set_block_size(String &value) {
 }
 
 void Unit::set_way(String &value) {
-    try {
-        this->way = (u16)stoul(value);
-    } catch(Exception &e) {
-        throw FormatException("'way' could not be parsed");
+    if(value.compare(text::FULL) == 0) {
+        this->full = true;
+    } else {
+        try {
+            this->way = (u16)stoul(value);
+        } catch(Exception &e) {
+            throw FormatException("'way' could not be parsed");
+        }
     }
 }
 

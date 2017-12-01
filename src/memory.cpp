@@ -1,9 +1,5 @@
-#include <cstdlib>
 #include <algorithm>
-#include <iostream>
-#include <string>
 #include "chars.hh"
-#include "consts.hh"
 #include "exceptions.hh"
 #include "memory.hh"
 #include "text.hh"

@@ -6,6 +6,7 @@ namespace text {
     const String LEVEL = "LEVEL";
     const String LINE = "LINE";
     const String WAY = "WAY";
+    const String FULL = "FULL";
     const String SIZE = "SIZE";
     const String HIT_TIME = "HITTIME";
     const String WRITE_POLICY = "WRITEPOLICY";

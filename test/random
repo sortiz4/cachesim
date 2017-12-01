@@ -11,6 +11,7 @@ if __name__ == '__main__':
     This script generates an access file
     containing completely random addresses.
     """
+    random.seed(0)
     with open(sys.argv[1], 'w') as file:
         for _ in range(COUNT):
             buffer = '{} {}\n'.format(

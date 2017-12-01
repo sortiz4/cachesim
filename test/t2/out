@@ -1,0 +1,13 @@
+Level:L1
+Access:1000
+Hit:904
+Miss:96
+Level:L2
+Access:534
+Hit:438
+Miss:96
+Level:Main
+Access:96
+Hit:96
+Miss:0
+TotalTime:50080

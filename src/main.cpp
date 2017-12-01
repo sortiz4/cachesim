@@ -2,7 +2,6 @@
 #include "exceptions.hh"
 #include "memory.hh"
 #include "status.hh"
-#include "types.hh"
 using namespace std;
 
 int main(int argc, char *argv[]) {
