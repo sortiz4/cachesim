@@ -65,9 +65,13 @@ void Memory::conf(String &path) {
     }
 
     // Sort the hierarchy
-    sort(vec.begin(), vec.end(), [](Unit *lhs, Unit *rhs) {
-        return *lhs < *rhs;
-    });
+    sort(
+        vec.begin(),
+        vec.end(),
+        [](Unit *lhs, Unit *rhs) {
+            return *lhs < *rhs;
+        }
+    );
     this->unit = vec[0];
 
     // Finalize the hierarcy

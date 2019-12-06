@@ -22,11 +22,13 @@ Unit::Unit() {
     this->hit_time = 0;
     this->size = 0;
     this->full = false;
+
     // Access properties
     this->access_time = 0;
     this->hit_count = 0;
     this->miss_count = 0;
     this->next = NULL;
+
     // Cache types
     this->mmap = Deque<Block>();
     this->dmap = HashMap<u32, Block>();
@@ -46,9 +48,9 @@ void Unit::score() {
         cout << "Level: " << (u16)this->level << endl;
     }
     cout << "HitCount: " << this->hit_count << endl
-         << "MissCount: " << this->miss_count << endl
-         << "AccessCount: " << this->hit_count + this->miss_count << endl
-         << "AccessTime: " << this->access_time << endl;
+        << "MissCount: " << this->miss_count << endl
+        << "AccessCount: " << this->hit_count + this->miss_count << endl
+        << "AccessTime: " << this->access_time << endl;
     if(this->next != NULL) {
         cout << endl;
         this->next->score();
@@ -69,8 +71,8 @@ Result Unit::load(u32 addr) {
         this->access_time += time;
         result.add_time(time);
     } else if(result.get_status() == consts::DIRTY) {
-        // Dirty loads will trigger a store and retry
-        // No need to accumulate time on the same level
+        // Dirty loads will trigger a store and retry - no need to accumulate
+        // time on the same level
         auto time = this->next->store(result.get_address()).get_time();
         this->access_time += time;
         result.add_time(time);
@@ -100,8 +102,8 @@ Result Unit::store(u32 addr) {
         // Write miss behavior depends on the policy
         this->miss_count += 1;
         if(this->write_miss_policy == consts::WRITE_ALLOCATE_ON) {
-            // Write allocation will load the block and retry
-            // No need to accumulate time on the same level
+            // Write allocation will load the block and retry - no need to
+            // accumulate time on the same level
             auto time = this->load(addr).get_time() - this->hit_time;
             this->access_time -= this->hit_time;
             result.add_time(time);
@@ -132,9 +134,11 @@ Result Unit::access(bool store, u32 addr) {
     // Compute bit widths
     u32 setw = round(log2(this->set_count));
     u32 offsw = round(log2(this->block_size));
+
     // Compute bit masks
     u32 tagm = 0xffffffff << (offsw + setw);
     u32 setm = ~tagm & (0xffffffff << offsw);
+
     // Break apart address
     u32 tag = (tagm & addr) >> (offsw + setw);
     u32 set = (setm & addr) >> offsw;
@@ -158,9 +162,9 @@ Result Unit::access_mmap(bool store, u32 addr, u32 tag, u32 set) {
                 // The cache doesn't have room (eviction)
                 auto &block = this->mmap[this->mmap.size() - 1];
                 if(block.get_dirty()) {
-                    // The block is dirty so the controller must
-                    // write this block to the next memory unit
-                    // and restart the current operation
+                    // The block is dirty so the controller must write this
+                    // block to the next memory unit and restart the current
+                    // operation
                     block.set_dirty(false);
                     return Result(consts::DIRTY, block.get_address());
                 }
@@ -209,9 +213,8 @@ Result Unit::access_dmap(bool store, u32 addr, u32 tag, u32 set) {
     // The block is valid but the tags do not match (miss + eviction)
     if(!store) {
         if(this->dmap[set].get_dirty()) {
-            // The block is dirty so the controller must
-            // write this block to the next memory unit
-            // and restart the current operation
+            // The block is dirty so the controller must write this block to
+            // the next memory unit and restart the current operation
             this->dmap[set].set_dirty(false);
             return Result(consts::DIRTY, this->dmap[set].get_address());
         }
@@ -245,9 +248,9 @@ Result Unit::access_nmap(bool store, u32 addr, u32 tag, u32 set) {
                 // The set doesn't have room (eviction)
                 auto &block = deque[deque.size() - 1];
                 if(block.get_dirty()) {
-                    // The block is dirty so the controller must
-                    // write this block to the next memory unit
-                    // and restart the current operation
+                    // The block is dirty so the controller must write this
+                    // block to the next memory unit and restart the current
+                    // operation
                     block.set_dirty(false);
                     return Result(consts::DIRTY, block.get_address());
                 }
@@ -394,6 +397,7 @@ void Unit::set_size(String &value) {
     u32 multipliers[] = {1, 1024, 1024*1024, 1024*1024*1024};
     auto suffix = value[value.length() - 1];
     auto multiplier = multipliers[0];
+
     // Check the size multiplier (only supports 'K', 'M', 'G')
     if(suffix == chars::UPPER_K) {
         multiplier = multipliers[1];

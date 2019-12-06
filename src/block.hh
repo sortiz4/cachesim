@@ -6,6 +6,7 @@ class Block {
         u32 address;
         u32 tag;
         bool dirty;
+
     public:
         Block();
         Block(u32, u32);

@@ -15,20 +15,24 @@ class Unit {
         u32 set_count;
         u32 size;
         bool full;
+
         // Access properties
         u32 access_time;
         u32 hit_count;
         u32 miss_count;
         Unit *next;
+
         // Cache types
         Deque<Block> mmap;
         HashMap<u32, Block> dmap;
         HashMap<u32, Deque<Block>> nmap;
+
         // Access methods
         Result access(bool, u32);
         Result access_mmap(bool, u32, u32, u32);
         Result access_dmap(bool, u32, u32, u32);
         Result access_nmap(bool, u32, u32, u32);
+
         // Configuration methods
         void set_level(String&);
         void set_write_hit_policy(String&);
@@ -37,6 +41,7 @@ class Unit {
         void set_way(String&);
         void set_hit_time(String&);
         void set_size(String&);
+
     public:
         Unit();
         ~Unit();

@@ -8,6 +8,7 @@ class Memory {
         void exec(String&, String&);
         void load(u32);
         void store(u32);
+
     public:
         Memory();
         ~Memory();

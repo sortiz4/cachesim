@@ -19,8 +19,7 @@ def clamp(n, lower, upper):
 
 if __name__ == '__main__':
     """
-    This script generates an access file containing tightly
-    grouped clusters of addresses (simulates spatial locality).
+    Generates an access file containing tightly grouped clusters of addresses.
     """
     random.seed(0)
     with open(sys.argv[1], 'w') as file:

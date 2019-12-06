@@ -6,6 +6,7 @@ class Result {
         u8 status;
         u32 address;
         u32 time;
+
     public:
         Result();
         Result(u8);

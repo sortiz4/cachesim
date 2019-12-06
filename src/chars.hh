@@ -13,6 +13,7 @@ namespace chars {
     const char UPPER_Z = 0x5A;
     const char LOWER_A = 0x61;
     const char LOWER_Z = 0x7A;
+
     bool is_alphanum(char);
     char normalize(char);
     void normalize(String&);
